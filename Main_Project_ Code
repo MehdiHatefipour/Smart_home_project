@@ -1,0 +1,154 @@
+#include <SoftwareSerial.h>
+#include <DHT.h>
+
+//Constants
+#define DHTPIN 2     // what pin we're connected to
+#define DHTTYPE DHT22   // DHT 22  (AM2302)
+int LED1 = 6;
+int LED2 = 5;
+int LED3 = 4;
+int LED4 = 3;
+
+float temp_LM35;
+//Create software serial object to communicate with SIM900
+SoftwareSerial sim900(7, 8); //SIM900 Tx & Rx is connected to Arduino #7 & #8
+String incomingData;   // for storing incoming serial data
+String message = "";   // A String for storing the message
+DHT dht(DHTPIN, DHTTYPE); //// Initialize DHT sensor for normal 16mhz Arduino
+//Variables
+int chk;
+int temp_step = 2; // 2 degress
+int hum_step  = 5;  // %5 humidity
+float hum;  //Stores humidity value
+float temp; //Stores temperature value
+String temp_hum_message = "";   // A String for temo and hum text
+
+/////////////////////////////////////////////////
+void setup()
+{
+  //Begin serial communication with Arduino and Arduino IDE (Serial Monitor)
+  Serial.begin(9600);
+  //Begin serial communication with Arduino and SIM900
+  ;
+  Serial.println("Initializing...");
+  delay(1000);
+  sim900.println("AT"); //Handshaking with SIM900
+  updateSerial();
+  sim900.println("AT+CSQ"); //Signal quality test, value range is 0-31 , 31 is the best
+  updateSerial();
+  sim900.println("AT+CCID"); //Read SIM information to confirm whether the SIM is plugged
+  updateSerial();
+  sim900.println("AT+CREG?"); //Check whether it has registered in the network
+  updateSerial();
+  sim900.println("AT+CMGF=1"); // Configuring TEXT mode
+  updateSerial();
+  // set gsm module to tp show the output on serial out
+  sim900.print("AT+CNMI=2,2,0,0,0\r"); 
+  updateSerial();
+  SendMessage("Sim900 is working!");
+  updateSerial();
+  
+  
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  pinMode(LED3, OUTPUT);
+  pinMode(LED4, OUTPUT);
+}
+/////////////////////////////////////////////////
+void loop()
+{
+  check_tem_hum();
+  receive_message();
+  if(incomingData.indexOf("Status")>=0)
+  {
+    message = temp_hum_message;
+    SendMessage(message);
+  }
+  if(incomingData.indexOf("Increase_temp")>=0)
+  {
+    digitalWrite(LED1, HIGH);
+    delay(5000);
+    digitalWrite(LED1, LOW);
+    String s1 = "The temp is set to ";
+    float high_temp = temp + temp_step;
+    message = s1 + high_temp;
+    SendMessage(message);
+  }
+  if(incomingData.indexOf("Decrease_temp")>=0)
+  {
+    digitalWrite(LED2, HIGH);
+    delay(5000);
+    digitalWrite(LED2, LOW);
+    String s1 = "The temp is set to ";
+    float low_temp = temp - temp_step;
+    message = s1 + low_temp;
+    SendMessage(message);
+  }
+  if(incomingData.indexOf("Increase_hum")>=0)
+  {
+    digitalWrite(LED3, HIGH);
+    delay(5000);
+    digitalWrite(LED3, LOW);
+    String s1 = "The humidity is set to ";
+    float high_hum = hum + hum_step;
+    message = s1 + high_hum;
+    SendMessage(message);
+  }
+  if(incomingData.indexOf("Decrease_hum")>=0)
+  {
+    digitalWrite(LED4, HIGH);
+    delay(5000);
+    digitalWrite(LED4, LOW);
+    String s1 = "The humidity is set to ";
+    float low_hum = hum - hum_step;
+    message = s1 + low_hum;
+    SendMessage(message);
+  }
+  
+}
+/////////////////////////////////////////////////
+void SendMessage(String message)
+{
+  sim900.println("AT+CMGS=\"+16468419914\"");//change ZZ with country code and xxxxxxxxxxx with phone number to sms
+  updateSerial();
+  sim900.print(message); //text content
+  updateSerial();
+  sim900.write(26);
+}
+/////////////////////////////////////////////////
+void updateSerial()
+{
+  delay(500);
+  while (Serial.available()) 
+  {
+    sim900.write(Serial.read());//Forward what Serial received to Software Serial Port
+  }
+  while(sim900.available()) 
+  {
+    Serial.write(sim900.read());//Forward what Software Serial received to Serial Port
+  }
+}
+/////////////////////////////////////////////////
+void receive_message()
+{
+  if (sim900.available() > 0)
+  {
+    incomingData = sim900.readString(); // Get the data from the serial port.
+    Serial.print(incomingData); 
+    delay(10); 
+  }
+}
+/////////////////////////////////////////////////
+void check_tem_hum()
+{
+    delay(1000); //Delay 2 sec.
+    hum = dht.readHumidity();
+    temp= dht.readTemperature();
+    temp_LM35 = analogRead(A0);
+    temp_LM35 = temp_LM35 * 0.48828125;
+    temp = (temp + temp_LM35)/2;
+    String s1 = "Humidity: ";
+    String s2 = " %, Temp: ";
+    String s3 = " Celsius";
+    temp_hum_message = s1 + hum + s2 + temp + s3;
+}
